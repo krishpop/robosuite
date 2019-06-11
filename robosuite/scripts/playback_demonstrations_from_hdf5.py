@@ -26,7 +26,7 @@ if __name__ == "__main__":
         "--folder",
         type=str,
         default=os.path.join(
-            robosuite.models.assets_root, "demonstrations/SawyerNutAssembly"
+            robosuite.models.assets_root, "demonstrations/BaxterReachFast2"
         ),
     )
     parser.add_argument(
@@ -46,7 +46,7 @@ if __name__ == "__main__":
         ignore_done=True,
         use_camera_obs=False,
         gripper_visualization=True,
-        reward_shaping=True,
+        # reward_shaping=True,
         control_freq=100,
     )
 

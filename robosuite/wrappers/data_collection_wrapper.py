@@ -29,6 +29,7 @@ class DataCollectionWrapper(Wrapper):
 
         # in-memory cache for simulation states and action info
         self.states = []
+        self.goals = []
         self.action_infos = []  # stores information about actions taken
 
         # how often to save simulation state, in terms of environment steps
@@ -95,6 +96,7 @@ class DataCollectionWrapper(Wrapper):
             state_path,
             states=np.array(self.states),
             action_infos=self.action_infos,
+            goal=self.env.unwrapped.goal,
             env=env_name,
         )
         self.states = []

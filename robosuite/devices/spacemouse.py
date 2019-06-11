@@ -87,6 +87,7 @@ class SpaceMouse(Device):
 
         self._display_controls()
 
+        self.grasp = False
         self.single_click_and_hold = False
 
         self._control = [0., 0., 0., 0., 0., 0.]
@@ -111,7 +112,7 @@ class SpaceMouse(Device):
         print("")
         print_command("Control", "Command")
         print_command("Right button", "reset simulation")
-        print_command("Left button (hold)", "close gripper")
+        print_command("Left button (press)", "close gripper")
         print_command("Move mouse laterally", "move arm horizontally in x-y plane")
         print_command("Move mouse vertically", "move arm vertically")
         print_command(
@@ -124,6 +125,7 @@ class SpaceMouse(Device):
         """
         Resets internal state of controller, except for the reset signal.
         """
+        self.grasp = False
         self.rotation = np.array([[-1., 0., 0.], [0., 1., 0.], [0., 0., -1.]])
 
     def start_control(self):
@@ -137,9 +139,9 @@ class SpaceMouse(Device):
 
     def get_controller_state(self):
         """Returns the current state of the 3d mouse, a dictionary of pos, orn, grasp, and reset."""
-        dpos = self.control[:3] * 0.005
-        roll, pitch, yaw = self.control[3:] * 0.005
-        self.grasp = self.control_gripper
+        dpos = self.control[:3] * 0.003
+        roll, pitch, yaw = self.control[3:] * 0.000
+        # self.grasp = False # self.control_gripper
 
         # convert RPY to an absolute orientation
         drot1 = rotation_matrix(angle=-pitch, direction=[1., 0, 0], point=None)[:3, :3]
@@ -149,7 +151,7 @@ class SpaceMouse(Device):
         self.rotation = self.rotation.dot(drot1.dot(drot2.dot(drot3)))
 
         return dict(
-            dpos=dpos, rotation=self.rotation, grasp=self.grasp, reset=self._reset_state
+            dpos=dpos, rotation=self.rotation, grasp=float(self.grasp), reset=self._reset_state
         )
 
     def run(self):
@@ -187,6 +189,7 @@ class SpaceMouse(Device):
                         elapsed_time = t_click - t_last_click
                         t_last_click = t_click
                         self.single_click_and_hold = True
+                        self.grasp = not self.grasp
 
                     # release left button
                     if d[1] == 0:
@@ -215,5 +218,5 @@ if __name__ == "__main__":
 
     space_mouse = SpaceMouse()
     for i in range(100):
-        print(space_mouse.control, space_mouse.control_gripper)
-        time.sleep(0.02)
+        print(space_mouse.control, space_mouse.grasp, space_mouse.single_click_and_hold)
+        time.sleep(0.2)
