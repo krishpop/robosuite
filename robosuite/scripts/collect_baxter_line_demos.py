@@ -67,7 +67,7 @@ def gather_demonstrations_as_hdf5(directory, out_dir):
     grp = f.create_group("data")
 
     num_eps = 0
-    env_name = 'BaxterReach'  # will get populated at some point
+    env_name = 'BaxterLine'  # will get populated at some point
 
     for ep_directory in os.listdir(directory):
 
@@ -141,6 +141,127 @@ def gather_demonstrations_as_hdf5(directory, out_dir):
     f.close()
 
 
+""" EE Positions at env reset (center of table)
+l ee pos:
+[0.85159155,
+ 0.03451803,
+ 0.82883006]
+r ee pos:
+[0.84031527,
+ -0.03995245,  
+ .83450149]
+"""
+
+
+def run_collection(env, goal_y, init_jpos=None, init_ind_pos=None, perturb_init=False):
+    obs = env.reset()
+    # First set indicator (goal) position for collection
+    bullet_data_path = os.path.join(robosuite.models.assets_root, "bullet_data")
+    goal_pos = env.goal
+    env.set_goal(goal_pos + np.array([0, goal_y, 0.03]))
+    # env.set_goal(np.array([0.85, -.35, 0.83]))
+    goal_pos = env.goal
+
+    # Init joint position if specified, and
+    if init_jpos is not None:
+        env.set_robot_joint_positions(init_jpos)
+        if perturb_init:
+            env.ignore_inputs = True
+            z_init = np.array([0, 0, np.random.choice([-.02, .03])])
+            z_init += init_ind_pos
+            l_goal_pos, r_goal_pos = z_init + np.array([0, 0.03, 0]), z_init + np.array([0, -0.03, 0])
+            l_offset, r_offset = env._l_eef_xpos - l_goal_pos, env._r_eef_xpos - r_goal_pos
+            while (np.abs(r_offset)[1] > 0.005 or np.abs(l_offset)[1] > 0.005):
+                dpos_right = r_goal_pos - env._r_eef_xpos
+                dpos_left = l_goal_pos - env._l_eef_xpos
+                l_offset, r_offset = env._l_eef_xpos - l_goal_pos, env._r_eef_xpos - r_goal_pos
+                dquat = np.array([0, 0, 0, 1])
+                grasp = 0.
+                action = np.concatenate([4e-2 * dpos_right, dquat, 4e-2 * dpos_left, dquat,
+                                         [grasp, grasp]])
+                env.step(action)
+                env.render()
+            env.ignore_inputs = False
+
+    n_steps = 2 #  int(8 - (0.35 - abs(goal_y)) // 0.05)
+    print('Starting: ', 'l_ee', env._l_eef_xpos, 'r_ee', env._r_eef_xpos, 'g', goal_pos)
+    return move_to_goal(env, goal_pos, n_steps)
+
+
+def move_to_goal(env, goal_pos, n_steps):
+    l_goal_pos, r_goal_pos = goal_pos + np.array([0, 0.03, 0]), goal_pos + np.array([0, -0.03, 0])
+    # lee y-offset: 0.03, ree y-offset: -0.03
+    last_dist = 0
+
+    for i in range(n_steps - 1):
+        left_traj = np.linspace(env._l_eef_xpos, l_goal_pos, n_steps - i)
+        right_traj = np.linspace(env._r_eef_xpos, r_goal_pos, n_steps - i)
+        l_ac, r_ac = left_traj[1], right_traj[1]
+        for t in range(500):
+            dpos_right = r_ac - env._r_eef_xpos
+            dpos_left = l_ac - env._l_eef_xpos
+            if np.abs(dpos_left).sum() < .05 and np.abs(dpos_right).sum() < .05 and i != n_steps - 2:
+                break
+            A = 1e-4 * t
+
+            dquat = np.array([0, 0, 0, 1])
+            grasp = 0.
+            action = np.concatenate([A * dpos_right, dquat, A * dpos_left, dquat, [grasp, grasp]])
+
+            dist = env.get_dist()
+            if last_dist - dist > 0.01:  # stop applying actions, something went wrong
+                done = True
+            else:
+                obs, reward, done, info = env.step(action)
+
+            if args.render:
+                env.render()
+
+            l_offset, r_offset = env._l_eef_xpos - l_goal_pos, env._r_eef_xpos - r_goal_pos
+            if (np.abs(r_offset)[1] < 0.01 and np.abs(l_offset)[1] < 0.01):
+                print('Joint positions:', robot_jpos_getter(env).round(3))
+                print('EE positions:', env._l_eef_xpos, env._r_eef_xpos)
+                print('done:', done, 'success:', env._check_success())
+                return (robot_jpos_getter(env).round(3), env._l_eef_xpos, env._r_eef_xpos,
+                        goal_pos, env._check_success())
+
+
+def collect_joints(env):
+    left_y_states = np.linspace(-0.35, -0.05, 7)
+    right_y_states = np.linspace(0.05, 0.35, 7)
+    d = np.load('line_start_pos.npz')
+    jpos_l, lee_l, ree_l, goals = list(d['jpos']), list(d['l_ee']), list(d['r_ee']), list(d['goals'])
+
+    if len(jpos_l) < 7:
+        for y_del in left_y_states[len(jpos_l):]:
+            jpos, lee, ree, g, succ = run_collection(env, y_del)
+            if succ:
+                jpos_l.append(jpos)
+                lee_l.append(lee)
+                ree_l.append(ree)
+                goals.append(g)
+                np.savez('line_start_pos.npz', jpos=np.array(jpos_l), l_ee=np.array(lee_l), r_ee=np.array(ree_l),
+                         goals=np.array(goals))
+            else:
+                print('Failed to reach', g)
+
+    for y_del in right_y_states[len(jpos_l) - 7:]:
+        jpos, lee, ree, g, succ = run_collection(env, y_del)
+        if succ:
+            jpos_l.append(jpos)
+            lee_l.append(lee)
+            ree_l.append(ree)
+            goals.append(g)
+            np.savez('line_start_pos.npz', jpos=np.array(jpos_l), l_ee=np.array(lee_l), r_ee=np.array(ree_l),
+                     goals=np.array(goals))
+        else:
+            print('Failed to reach', g)
+
+
+def robot_jpos_getter(env) :
+    return np.array(env._joint_positions)
+
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
@@ -149,13 +270,19 @@ if __name__ == "__main__":
         type=str,
         default=os.path.join(robosuite.models.assets_root, "demonstrations"),
     )
+    parser.add_argument(
+        "--render",
+        type=bool,
+        default=False,
+    )
+
     args = parser.parse_args()
 
     # initialize a Baxter environment
     env = robosuite.make(
-        "BaxterReach",
+        "BaxterLine",
         ignore_done=True,
-        has_renderer=False,
+        has_renderer=args.render,
         gripper_visualization=True,
         use_camera_obs=False,
     )
@@ -163,57 +290,18 @@ if __name__ == "__main__":
     tmp_directory = "/tmp/{}".format(str(time.time()).replace(".", "_"))
     env = DataCollectionWrapper(env, tmp_directory)
 
-    def robot_jpos_getter():
-        return np.array(env._joint_positions)
-
-
-    def run_episode():
-        obs = env.reset()
-
-        # rotate the gripper so we can see it easily
-        env.set_robot_joint_positions([
-            0.00, -0.55, 0.00, 1.28, 0.00, 0.26, 0.00,
-            0.00, -0.55, 0.00, 1.28, 0.00, 0.26, 0.00,
-        ])
-
-        goal_pos = env.goal
-        left_traj = np.linspace(env._l_eef_xpos,  goal_pos, 2)
-        right_traj = np.linspace(env._r_eef_xpos, goal_pos, 2)
-        done = False
-        last_dist = 0
-
-        for i in range(2):
-            l_ac, r_ac = left_traj[i], right_traj[i]
-            for t in range(500):
-                dpos_right = r_ac - env._r_eef_xpos
-                dpos_left = l_ac - env._l_eef_xpos
-                if np.abs(dpos_left).sum() < .05 and np.abs(dpos_right).sum() < .05:
-                    # print('Next!')
-                    break
-                A = 1e-4*t
-
-                dquat = np.array([0, 0, 0, 1])
-                grasp = 0.
-                action = np.concatenate([A*dpos_right, dquat, A*dpos_left, dquat, [grasp, grasp]])
-
-                dist = env.get_dist()
-                if last_dist - dist > 0.01:  # stop applying actions, something went wrong
-                    done = True
-                else:
-                    obs, reward, done, info = env.step(action)
-
-                # env.render()
-
-                if done or env._check_success():
-                    print('done:', done, 'success:', env._check_success())
-                    return
+    j_states = np.load('line_start_pos.npz')
+    for i, g in enumerate(j_states['goals']):
+        if i >= 3:
+            run_collection(env, j_states['goals'][i - 3][1], j_states['jpos'][i], g, True)
+            run_collection(env, j_states['goals'][i - 3][1], j_states['jpos'][i], g, False)
+        if i <= len(j_states['goals']) - 4:
+            run_collection(env, j_states['goals'][i + 3][1], j_states['jpos'][i], g, True)
+            run_collection(env, j_states['goals'][i + 3][1], j_states['jpos'][i], g, False)
 
     # make a new timestamped directory
-    # t1, t2 = str(time.time()).split(".")
-    new_dir = os.path.join(args.directory, "BaxterReachFast2")
+    t1, t2 = str(time.time()).split(".")
+    new_dir = os.path.join(args.directory, "BaxterLine")
     os.makedirs(new_dir)
-
-    for ep in range(100):
-        run_episode()
 
     gather_demonstrations_as_hdf5(tmp_directory, new_dir)

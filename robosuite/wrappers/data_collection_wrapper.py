@@ -48,6 +48,10 @@ class DataCollectionWrapper(Wrapper):
         # remember whether any environment interaction has occurred
         self.has_interaction = False
 
+        # don't start collecting Data if ignore_inputs is True,
+        # allows initialization interaction that is not logged
+        self._ignore_inputs = False
+
     def _start_new_episode(self):
         """
         Bookkeeping to do at the start of each new episode.
@@ -102,6 +106,14 @@ class DataCollectionWrapper(Wrapper):
         self.states = []
         self.action_infos = []
 
+    @property
+    def ignore_inputs(self):
+        return self._ignore_inputs
+
+    @ignore_inputs.setter
+    def ignore_inputs(self, x: bool):
+        self._ignore_inputs = x
+
     def reset(self):
         ret = super().reset()
         self._start_new_episode()
@@ -109,14 +121,15 @@ class DataCollectionWrapper(Wrapper):
 
     def step(self, action):
         ret = super().step(action)
-        self.t += 1
+        if not self._ignore_inputs:
+            self.t += 1
 
         # on the first time step, make directories for logging
-        if not self.has_interaction:
+        if not self.has_interaction and not self._ignore_inputs:
             self._on_first_interaction()
 
         # collect the current simulation state if necessary
-        if self.t % self.collect_freq == 0:
+        if self.t % self.collect_freq == 0 and not self._ignore_inputs:
             state = self.env.sim.get_state().flatten()
             self.states.append(state)
 
@@ -143,7 +156,7 @@ class DataCollectionWrapper(Wrapper):
             self.action_infos.append(info)
 
         # flush collected data to disk if necessary
-        if self.t % self.flush_freq == 0:
+        if self.t % self.flush_freq == 0 and not self._ignore_inputs:
             self._flush()
 
         return ret
