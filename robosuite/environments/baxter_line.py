@@ -103,18 +103,20 @@ class BaxterLine(BaxterEnv):
         super()._reset_internal()
         self.sim.data.qpos[self._ref_joint_pos_indexes] = self.init_qpos
         goal = np.zeros(3)  # np.random.uniform(-0.3, 0.3, size=3)
-        goal[2] = 0  # z value is always table offset
+        goal[2] = 0.03  # z value is always table offset + 0.03
         goal += self.model.table_top_offset
-        self.set_goal(goal)
-
-    def set_goal(self, goal):
         self.goal = goal
-        self.move_indicator(goal)
+
+    @property
+    def goal(self):
+        return self.sim.data.qpos[self._ref_indicator_pos_low: self._ref_indicator_pos_low + 3]
+
+    @goal.setter
+    def goal(self, new_goal):
+        self.move_indicator(new_goal)
 
     def get_dist(self):
-        goal = self.sim.data.qpos[
-                self._ref_indicator_pos_low : self._ref_indicator_pos_low + 3
-            ]
+        goal = self.goal
         return np.linalg.norm(self._l_eef_xpos - goal) + np.linalg.norm(self._r_eef_xpos - goal)
 
     def reward(self, action):
@@ -180,9 +182,11 @@ class BaxterLine(BaxterEnv):
         """
         Returns True if task is successfully completed
         """
-        dist = self.get_dist()
+        l_dist = np.abs(self._l_eef_xpos - self.goal)
+        r_dist = np.abs(self._r_eef_xpos - self.goal)
+        return l_dist[1] < 0.005 and r_dist[1] < 0.005 and self.get_dist() < 0.1
         # if dist < 1:
         #    print('dist:', dist)
-        if dist < 0.1:
-            return True
-        return False
+        # if dist < 0.1:
+        #     return True
+        # return False
