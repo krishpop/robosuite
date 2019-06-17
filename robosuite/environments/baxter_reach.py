@@ -10,11 +10,11 @@ from robosuite.models.tasks import TableTopTask, UniformRandomSampler
 
 class BaxterReach(BaxterEnv):
     def __init__(
-        self,
-        table_full_size=(0.8, 0.8, 0.8),
-        table_friction=(1., 5e-3, 1e-4),
-        use_object_obs=True,
-        **kwargs
+            self,
+            table_full_size=(0.8, 0.8, 0.8),
+            table_friction=(1., 5e-3, 1e-4),
+            use_object_obs=True,
+            **kwargs
     ):
         """
         Args:
@@ -42,7 +42,6 @@ class BaxterReach(BaxterEnv):
         self.use_object_obs = False
 
         self.object_initializer = None
-        self.goal = None
 
         super().__init__(
             use_indicator_object=True, gripper_left="LeftTwoFingerGripper", gripper_right="TwoFingerGripper", **kwargs
@@ -91,12 +90,17 @@ class BaxterReach(BaxterEnv):
         goal[2] = 0
         goal += self.model.table_top_offset
         self.goal = goal
-        self.move_indicator(goal)
+
+    @property
+    def goal(self):
+        return self.sim.data.qpos[self._ref_indicator_pos_low: self._ref_indicator_pos_low + 3]
+
+    @goal.setter
+    def goal(self, new_goal):
+        self.move_indicator(new_goal)
 
     def get_dist(self):
-        goal = self.sim.data.qpos[
-                self._ref_indicator_pos_low : self._ref_indicator_pos_low + 3
-            ]
+        goal = self.goal
         return np.linalg.norm(self._l_eef_xpos - goal) + np.linalg.norm(self._r_eef_xpos - goal)
 
     def reward(self, action):
@@ -147,12 +151,12 @@ class BaxterReach(BaxterEnv):
         """
         collision = False
         contact_geoms = (
-            self.gripper_right.contact_geoms() + self.gripper_left.contact_geoms()
+                self.gripper_right.contact_geoms() + self.gripper_left.contact_geoms()
         )
         for contact in self.sim.data.contact[: self.sim.data.ncon]:
             if (
-                self.sim.model.geom_id2name(contact.geom1) in contact_geoms
-                or self.sim.model.geom_id2name(contact.geom2) in contact_geoms
+                    self.sim.model.geom_id2name(contact.geom1) in contact_geoms
+                    or self.sim.model.geom_id2name(contact.geom2) in contact_geoms
             ):
                 collision = True
                 break

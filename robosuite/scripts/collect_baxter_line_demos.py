@@ -158,7 +158,7 @@ def run_collection(env, goal_y, init_jpos=None, init_ind_pos=None, perturb_init=
     # First set indicator (goal) position for collection
     bullet_data_path = os.path.join(robosuite.models.assets_root, "bullet_data")
     goal_pos = env.goal
-    env.set_goal(goal_pos + np.array([0, goal_y, 0.03]))
+    env.goal = goal_pos + np.array([0, goal_y, 0.03])
     # env.set_goal(np.array([0.85, -.35, 0.83]))
     goal_pos = env.goal
 
@@ -286,6 +286,7 @@ if __name__ == "__main__":
         gripper_visualization=True,
         use_camera_obs=False,
     )
+    env.viewer.set_camera(camera_id=2)
     env = IKWrapper(env, 10)
     tmp_directory = "/tmp/{}".format(str(time.time()).replace(".", "_"))
     env = DataCollectionWrapper(env, tmp_directory)
@@ -301,7 +302,7 @@ if __name__ == "__main__":
 
     # make a new timestamped directory
     t1, t2 = str(time.time()).split(".")
-    new_dir = os.path.join(args.directory, "BaxterLine")
+    new_dir = os.path.join(args.directory, "BaxterLine2")
     os.makedirs(new_dir)
 
     gather_demonstrations_as_hdf5(tmp_directory, new_dir)

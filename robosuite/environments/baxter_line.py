@@ -56,7 +56,7 @@ class BaxterLine(BaxterEnv):
         self.use_object_obs = use_object_obs
 
         self.object_initializer = None
-        self.goal = None
+        self.use_indicator_object = True
 
         super().__init__(
             use_indicator_object=True, gripper_left="LeftTwoFingerGripper", gripper_right="TwoFingerGripper", **kwargs
