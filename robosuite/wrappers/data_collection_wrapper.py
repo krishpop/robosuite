@@ -121,15 +121,17 @@ class DataCollectionWrapper(Wrapper):
 
     def step(self, action):
         ret = super().step(action)
-        if not self._ignore_inputs:
-            self.t += 1
+        if self._ignore_inputs:
+            return ret
+
+        self.t += 1
 
         # on the first time step, make directories for logging
-        if not self.has_interaction and not self._ignore_inputs:
+        if not self.has_interaction:
             self._on_first_interaction()
 
         # collect the current simulation state if necessary
-        if self.t % self.collect_freq == 0 and not self._ignore_inputs:
+        if self.t % self.collect_freq == 0:
             state = self.env.sim.get_state().flatten()
             self.states.append(state)
 
@@ -156,7 +158,7 @@ class DataCollectionWrapper(Wrapper):
             self.action_infos.append(info)
 
         # flush collected data to disk if necessary
-        if self.t % self.flush_freq == 0 and not self._ignore_inputs:
+        if self.t % self.flush_freq == 0:
             self._flush()
 
         return ret
