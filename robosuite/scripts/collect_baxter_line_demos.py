@@ -155,6 +155,9 @@ r ee pos:
 
 def run_collection(env, goal_y, init_jpos=None, init_ind_pos=None, perturb_init=False):
     obs = env.reset()
+    env.viewer.set_camera(camera_id=2)
+    emv.render()
+
     # First set indicator (goal) position for collection
     bullet_data_path = os.path.join(robosuite.models.assets_root, "bullet_data")
     goal_pos = env.goal
@@ -185,6 +188,7 @@ def run_collection(env, goal_y, init_jpos=None, init_ind_pos=None, perturb_init=
 
     n_steps = 2 #  int(8 - (0.35 - abs(goal_y)) // 0.05)
     print('Starting: ', 'l_ee', env._l_eef_xpos, 'r_ee', env._r_eef_xpos, 'g', goal_pos)
+
     return move_to_goal(env, goal_pos, n_steps)
 
 
@@ -193,6 +197,7 @@ def move_to_goal(env, goal_pos, n_steps):
     # lee y-offset: 0.03, ree y-offset: -0.03
     last_dist = 0
 
+    is_first = True
     for i in range(n_steps - 1):
         left_traj = np.linspace(env._l_eef_xpos, l_goal_pos, n_steps - i)
         right_traj = np.linspace(env._r_eef_xpos, r_goal_pos, n_steps - i)
@@ -213,6 +218,23 @@ def move_to_goal(env, goal_pos, n_steps):
                 done = True
             else:
                 obs, reward, done, info = env.step(action)
+
+                if is_first:
+                    is_first = False
+
+                    # We grab the initial model xml and state and reload from those so that
+                    # we can support deterministic playback of actions from our demonstrations.
+                    # This is necessary due to rounding issues with the model xml and with
+                    # env.sim.forward(). We also have to do this after the first action is 
+                    # applied because the data collector wrapper only starts recording
+                    # after the first action has been played.
+                    initial_mjstate = env.sim.get_state().flatten()
+                    xml_str = env.model.get_xml()
+                    env.reset_from_xml_string(xml_str)
+                    env.sim.reset()
+                    env.sim.set_state_from_flattened(initial_mjstate)
+                    env.sim.forward()
+                    env.viewer.set_camera(camera_id=2)
 
             if args.render:
                 env.render()

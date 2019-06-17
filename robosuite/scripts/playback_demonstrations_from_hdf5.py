@@ -87,14 +87,13 @@ if __name__ == "__main__":
             num_actions = actions.shape[0]
 
             for j, action in enumerate(actions):
-                print(action)
                 env.step(action)
                 env.render()
 
                 if j < num_actions - 1:
                     # ensure that the actions deterministically lead to the same recorded states
                     state_playback = env.sim.get_state().flatten()
-                    # assert(np.all(np.equal(states[j + 1], state_playback)))
+                    assert(np.all(np.equal(states[j + 1], state_playback)))
 
         else:
 
