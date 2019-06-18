@@ -256,7 +256,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--environment", type=str, default="BaxterLift")
     parser.add_argument("--device1", type=str, default="spacemouse")
-    parser.add_argument("--device2", type=str, default="spacemouse")
+    parser.add_argument("--device2", type=str, default="keyboard")
     args = parser.parse_args()
 
     assert args.environment.startswith('Baxter')
@@ -313,7 +313,7 @@ if __name__ == "__main__":
 
     # make a new timestamped directory
     t1, t2 = str(time.time()).split(".")
-    new_dir = os.path.join(args.directory, "{}_{}".format(t1, t2))
+    new_dir = os.path.join(args.directory, "BaxterLiftTest")# "{}_{}".format(t1, t2))
     os.makedirs(new_dir)
 
     # collect demonstrations

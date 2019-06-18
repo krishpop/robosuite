@@ -122,7 +122,7 @@ def gather_demonstrations_as_hdf5(directory, out_dir):
         ep_data_grp.create_dataset("right_dquat", data=np.array(right_dquat))
         ep_data_grp.create_dataset("left_dpos", data=np.array(left_dpos))
         ep_data_grp.create_dataset("left_dquat", data=np.array(left_dquat))
-        ep_data_grp.attrs["goal"] = dic["goal"]
+        # ep_data_grp.attrs["goal"] = dic["goal"]
         # copy over and rename model xml
         xml_path = os.path.join(directory, ep_directory, "model.xml")
         shutil.copy(xml_path, model_dir)
@@ -155,13 +155,13 @@ r ee pos:
 
 def run_collection(env, goal_y, init_jpos=None, init_ind_pos=None, perturb_init=False):
     obs = env.reset()
-    env.viewer.set_camera(camera_id=2)
-    emv.render()
+    # env.viewer.set_camera(camera_id=2)
+    # env.render()
 
     # First set indicator (goal) position for collection
     bullet_data_path = os.path.join(robosuite.models.assets_root, "bullet_data")
     goal_pos = env.goal
-    env.goal = goal_pos + np.array([0, goal_y, 0.03])
+    env.set_goal(goal_pos + np.array([0, goal_y, 0.03]))
     # env.set_goal(np.array([0.85, -.35, 0.83]))
     goal_pos = env.goal
 
@@ -180,16 +180,32 @@ def run_collection(env, goal_y, init_jpos=None, init_ind_pos=None, perturb_init=
                 l_offset, r_offset = env._l_eef_xpos - l_goal_pos, env._r_eef_xpos - r_goal_pos
                 dquat = np.array([0, 0, 0, 1])
                 grasp = 0.
-                action = np.concatenate([4e-2 * dpos_right, dquat, 4e-2 * dpos_left, dquat,
+                action = np.concatenate([4e-3 * dpos_right, dquat, 4e-3 * dpos_left, dquat,
                                          [grasp, grasp]])
                 env.step(action)
-                env.render()
+                # env.render()
             env.ignore_inputs = False
 
-    n_steps = 2 #  int(8 - (0.35 - abs(goal_y)) // 0.05)
+    n_steps = 3 # int(8 - (0.35 - abs(goal_y)) // 0.05)
     print('Starting: ', 'l_ee', env._l_eef_xpos, 'r_ee', env._r_eef_xpos, 'g', goal_pos)
 
-    return move_to_goal(env, goal_pos, n_steps)
+    ret = move_to_goal(env, goal_pos, n_steps)
+    env.close()
+    return ret
+
+
+def run_random(env):
+    obs = env.reset()
+    for i in range(200):
+        vel = np.zeros(16)
+        vel[4:6], vel[11:13] = (np.random.sample(size=2)-1)*.3, (np.random.sample(size=2)-1)*.3
+        env.step(vel)
+        print('Step {}:'.format(i))
+        print('='*30)
+        print(vel)
+        print(env.sim.get_state().flatten())
+        env.render()
+    return
 
 
 def move_to_goal(env, goal_pos, n_steps):
@@ -198,6 +214,8 @@ def move_to_goal(env, goal_pos, n_steps):
     last_dist = 0
 
     is_first = True
+    task_completion_hold_count = -1
+    step_count = 0
     for i in range(n_steps - 1):
         left_traj = np.linspace(env._l_eef_xpos, l_goal_pos, n_steps - i)
         right_traj = np.linspace(env._r_eef_xpos, r_goal_pos, n_steps - i)
@@ -207,7 +225,7 @@ def move_to_goal(env, goal_pos, n_steps):
             dpos_left = l_ac - env._l_eef_xpos
             if np.abs(dpos_left).sum() < .05 and np.abs(dpos_right).sum() < .05 and i != n_steps - 2:
                 break
-            A = 1e-4 * t
+            A = 1e-3 * t
 
             dquat = np.array([0, 0, 0, 1])
             grasp = 0.
@@ -218,6 +236,7 @@ def move_to_goal(env, goal_pos, n_steps):
                 done = True
             else:
                 obs, reward, done, info = env.step(action)
+                step_count += 1
 
                 if is_first:
                     is_first = False
@@ -234,13 +253,24 @@ def move_to_goal(env, goal_pos, n_steps):
                     env.sim.reset()
                     env.sim.set_state_from_flattened(initial_mjstate)
                     env.sim.forward()
-                    env.viewer.set_camera(camera_id=2)
+                    # env.viewer.set_camera(camera_id=2)
 
             if args.render:
                 env.render()
 
             l_offset, r_offset = env._l_eef_xpos - l_goal_pos, env._r_eef_xpos - r_goal_pos
-            if (np.abs(r_offset)[1] < 0.01 and np.abs(l_offset)[1] < 0.01):
+
+            # state machine to check for having a success for 10 consecutive timesteps
+            if env._check_success():
+                if task_completion_hold_count > 0:
+                    task_completion_hold_count -= 1  # latched state, decrement count
+                else:
+                    task_completion_hold_count = 10  # reset count on first success timestep
+            else:
+                task_completion_hold_count = -1  # null the counter if there's no success
+
+            if (env._check_success() and task_completion_hold_count==0):
+                print('Steps:', step_count)
                 print('Joint positions:', robot_jpos_getter(env).round(3))
                 print('EE positions:', env._l_eef_xpos, env._r_eef_xpos)
                 print('done:', done, 'success:', env._check_success())
@@ -308,12 +338,13 @@ if __name__ == "__main__":
         gripper_visualization=True,
         use_camera_obs=False,
     )
-    env.viewer.set_camera(camera_id=2)
-    env = IKWrapper(env, 10)
+    # env.viewer.set_camera(camera_id=2)
+    env = IKWrapper(env, 1)
     tmp_directory = "/tmp/{}".format(str(time.time()).replace(".", "_"))
     env = DataCollectionWrapper(env, tmp_directory)
 
     j_states = np.load('line_start_pos.npz')
+
     for i, g in enumerate(j_states['goals']):
         if i >= 3:
             run_collection(env, j_states['goals'][i - 3][1], j_states['jpos'][i], g, True)
@@ -321,10 +352,9 @@ if __name__ == "__main__":
         if i <= len(j_states['goals']) - 4:
             run_collection(env, j_states['goals'][i + 3][1], j_states['jpos'][i], g, True)
             run_collection(env, j_states['goals'][i + 3][1], j_states['jpos'][i], g, False)
-
     # make a new timestamped directory
     t1, t2 = str(time.time()).split(".")
-    new_dir = os.path.join(args.directory, "BaxterLine2")
+    new_dir = os.path.join(args.directory, "BaxterLine")
     os.makedirs(new_dir)
 
     gather_demonstrations_as_hdf5(tmp_directory, new_dir)

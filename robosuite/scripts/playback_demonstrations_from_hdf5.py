@@ -12,6 +12,8 @@ Example:
     $ python playback_demonstrations_from_hdf5.py --folder ../models/assets/demonstrations/SawyerPickPlace/
 """
 import os
+import time
+
 import h5py
 import argparse
 import random
@@ -26,7 +28,7 @@ if __name__ == "__main__":
         "--folder",
         type=str,
         default=os.path.join(
-            robosuite.models.assets_root, "demonstrations/BaxterLine"
+            robosuite.models.assets_root, "demonstrations/BaxterLineTest"
         ),
     )
     parser.add_argument(
@@ -47,7 +49,6 @@ if __name__ == "__main__":
         use_camera_obs=False,
         gripper_visualization=True,
         # reward_shaping=True,
-        control_freq=100,
     )
 
     # list of all demonstrations episodes
@@ -66,9 +67,9 @@ if __name__ == "__main__":
             model_xml = model_f.read()
 
         env.reset()
-        xml = postprocess_model_xml(model_xml)
-        env.reset_from_xml_string(xml)
-        env.sim.reset()
+        # xml = postprocess_model_xml(model_xml)
+        # env.reset_from_xml_string(xml)
+        # env.sim.reset()
         env.viewer.set_camera(0)
 
         # load the flattened mujoco states
@@ -93,7 +94,7 @@ if __name__ == "__main__":
                 if j < num_actions - 1:
                     # ensure that the actions deterministically lead to the same recorded states
                     state_playback = env.sim.get_state().flatten()
-                    assert(np.all(np.equal(states[j + 1], state_playback)))
+                    assert(np.all(np.isclose(states[j + 1], state_playback)))
 
         else:
 
